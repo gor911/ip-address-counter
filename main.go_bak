@@ -1,0 +1,84 @@
+package main
+
+import (
+	"fmt"
+	"math/big"
+
+	"runtime"
+)
+
+const totalBits = 1 << 25
+
+func main() {
+	// start with all bits = 0
+	bits := big.NewInt(0)
+
+	// set bit at position i to 1
+	var i uint = 123456789
+
+	for i := 0; i < totalBits; i++ {
+		bits.SetBit(bits, int(i), 1)
+	}
+
+	// test bit i
+	if bits.Bit(int(i)) == 1 {
+		fmt.Println("Bit", i, "is ON")
+	}
+
+	// clear bit i (set back to 0)
+	bits.SetBit(bits, int(i), 0)
+	fmt.Println("After clear, bit", i, "=", bits.Bit(int(i)))
+
+	//spew.Config.ContinueOnMethod = true
+	//
+	//rb3 := roaring.New()
+	//
+	//for i := 0; i < totalBits; i++ {
+	//	rb3.Add(uint32(i))
+	//}
+	//
+	//fmt.Println(rb3.DenseSize())
+
+	//b := bitset.New(32) // make 32-bit set
+	//
+	//for i := 0; i < totalBits; i++ {
+	//	b.Set(uint(i))
+	//}
+
+	//fmt.Println(b.Len())
+
+	//for i := range b.EachSet() {
+	//
+	//}
+
+	// Create an empty big.Int (all bits = 0)
+	//bits := big.NewInt(0)
+	//
+	//// Set bit at index 3 to 1
+	//bits.SetBit(bits, 3, 1)
+	//
+	//// Check bit at index 3
+	//if bits.Bit(3) == 1 {
+	//	fmt.Println("Bit 3 is ON")
+	//}
+
+	//// Clear bit 3 (set it back to 0)
+	//bits.SetBit(bits, 3, 0)
+	//fmt.Println("Bit 3 now:", bits.Bit(3)) // prints 0
+
+	//spew.Dump(bits)
+
+	//fmt.Println(unsafe.Sizeof(bits))
+	//fmt.Println(unsafe.Sizeof(b))
+	//fmt.Println(unsafe.Sizeof(rb3))
+	PrintMemUsage()
+}
+
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
+	fmt.Printf("\tTotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
+	fmt.Printf("\tSys = %v MiB", m.Sys/1024/1024)
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+}
