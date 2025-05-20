@@ -32,8 +32,12 @@ func Run() {
 	}()
 
 	// make a buffer to keep chunks that are read
-	buf := make([]byte, 8)
+	buf := make([]byte, 16)
+
 	for {
+		//spew.Config.ContinueOnMethod = true
+		//spew.Dump(buf)
+
 		// read a chunk
 		n, err := fi.Read(buf)
 		if err != nil && err != io.EOF {
@@ -44,6 +48,7 @@ func Run() {
 		}
 
 		fmt.Println(string(buf[:n]))
+		fmt.Println()
 
 		// write a chunk
 		if _, err := fo.Write(buf[:n]); err != nil {

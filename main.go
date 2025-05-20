@@ -11,7 +11,7 @@ func main() {
 	defer timer("main")() // <-- The trailing () is the deferred call
 	defer PrintMemUsage()
 
-	cmd.Run2()
+	cmd.Run3()
 
 	//cmd.RunBitSlice()
 	//cmd.RunBigInt()
