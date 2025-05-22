@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func Run3() {
@@ -22,8 +24,8 @@ func Run3() {
 		}
 	}(f)
 
-	const chunkSize = 4 // e.g. 4 KB per chunk
-	var leftover []byte // carry any partial line
+	const chunkSize = 40 // e.g. 4 KB per chunk
+	var leftover []byte  // carry any partial line
 	buf := make([]byte, chunkSize)
 
 	for {
@@ -71,7 +73,22 @@ func Run3() {
 func processChunk(chunk []byte) {
 	lines := bytes.Count(chunk, []byte{'\n'})
 	fmt.Printf("Got %d lines (%d bytes)\n", lines, len(chunk))
-	fmt.Println(string(chunk))
+	//fmt.Println(string(chunk))
+
+	ipAddresses := strings.Fields(string(chunk))
+
+	for _, ipAddress := range ipAddresses {
+		numbers := strings.Split(ipAddress, ".")
+
+		firstNumber, _ := strconv.Atoi(numbers[0])
+		secondNumber, _ := strconv.Atoi(numbers[1])
+		thirdNumber, _ := strconv.Atoi(numbers[2])
+		fourthNumber, _ := strconv.Atoi(numbers[3])
+
+		a := 1<<24*firstNumber + 1<<16*secondNumber + 1<<8*thirdNumber + fourthNumber
+		fmt.Println(ipAddress, a)
+	}
+
 	// You can convert to string: text := string(chunk)
 	// and work with each line if you like.
 }
