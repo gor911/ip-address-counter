@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"io"
 	"log"
 	"os"
@@ -21,8 +22,8 @@ func Run3() {
 		}
 	}(f)
 
-	const chunkSize = 25 // e.g. 4 KB per chunk
-	leftover := []byte{} // carry any partial line
+	const chunkSize = 4 // e.g. 4 KB per chunk
+	var leftover []byte // carry any partial line
 	buf := make([]byte, chunkSize)
 
 	for {
@@ -35,23 +36,24 @@ func Run3() {
 			// 2) find the last newline in data
 			cut := bytes.LastIndexByte(data, '\n')
 
-			if cut != -1 {
+			if cut == -1 {
+				// no newline found: buffer too small for one line?
+				// keep all data as leftover and read more
+				leftover = data
+			} else {
 				// full-chunk is data up to and including that newline
 				full := data[:cut+1]
 				processChunk(full)
 
 				// leftover is any bytes after that newline
 				leftover = data[cut+1:]
-			} else {
-				// no newline found: buffer too small for one line?
-				// keep all data as leftover and read more
-				leftover = data
 			}
 		}
 
 		if err != nil {
 			if err == io.EOF {
-				// process any remaining lines in leftover
+				spew.Dump(len(leftover))
+				// If the file does not end with a newline.
 				if len(leftover) > 0 {
 					processChunk(leftover)
 				}
