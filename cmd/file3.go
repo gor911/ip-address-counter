@@ -29,8 +29,9 @@ func Run3() {
 	mutex := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
-	const chunkSize = 40 // e.g. 4 KB per chunk
-	var leftover []byte  // carry any partial line
+	const chunkSize = 100 * 1024 * 1024 // 100 MiB
+
+	var leftover []byte // carry any partial line
 	buf := make([]byte, chunkSize)
 	bitsArr := make([]uint64, wordsNeeded)
 
@@ -52,7 +53,7 @@ func Run3() {
 				// full-chunk is data up to and including that newline
 				full := data[:cut+1]
 				wg.Add(1)
-				go processChunk(full, bitsArr, &mutex, &wg)
+				processChunk(full, bitsArr, &mutex, &wg)
 
 				// leftover is any bytes after that newline
 				leftover = data[cut+1:]
@@ -61,7 +62,7 @@ func Run3() {
 
 		if err != nil {
 			if err == io.EOF {
-				fmt.Println(len(leftover))
+				fmt.Println("leftover", len(leftover))
 				// If the file does not end with a newline.
 				if len(leftover) > 0 {
 					wg.Add(1)
@@ -92,7 +93,6 @@ func Run3() {
 func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
 	lines := bytes.Count(chunk, []byte{'\n'})
 	fmt.Printf("Got %d lines (%d bytes)\n", lines, len(chunk))
-	//fmt.Println(string(chunk))
 
 	ipAddresses := strings.Fields(string(chunk))
 
@@ -109,7 +109,6 @@ func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitG
 		// 0 ... 2^32-1
 		bit := binary.BigEndian.Uint32(ip.To4())
 
-		fmt.Println(ip.To4(), bit)
 		SetBit(bits, bit, mutex)
 	}
 
