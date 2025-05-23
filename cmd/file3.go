@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
 	"io"
 	"log"
+	"math/bits"
+	"net"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -27,6 +29,7 @@ func Run3() {
 	const chunkSize = 40 // e.g. 4 KB per chunk
 	var leftover []byte  // carry any partial line
 	buf := make([]byte, chunkSize)
+	bitsArr := make([]uint64, wordsNeeded)
 
 	for {
 		n, err := f.Read(buf)
@@ -45,7 +48,7 @@ func Run3() {
 			} else {
 				// full-chunk is data up to and including that newline
 				full := data[:cut+1]
-				processChunk(full)
+				processChunk(full, bitsArr)
 
 				// leftover is any bytes after that newline
 				leftover = data[cut+1:]
@@ -57,7 +60,7 @@ func Run3() {
 				spew.Dump(len(leftover))
 				// If the file does not end with a newline.
 				if len(leftover) > 0 {
-					processChunk(leftover)
+					processChunk(leftover, bitsArr)
 				}
 
 				break
@@ -66,11 +69,21 @@ func Run3() {
 			log.Fatal(err)
 		}
 	}
+
+	//for i := 0; i < totalBits; i++ {
+	//	if TestBit(bits, uint32(i)) {
+	//		log.Println("Bit", i, "is ON", indexToIP(uint32(i)))
+	//	}
+	//}
+
+	cnt := CountSetBits(bitsArr)
+	fmt.Println(cnt)
+
 }
 
 // processChunk handles a chunk of complete lines.
 // Here we just print how many lines and bytes we got.
-func processChunk(chunk []byte) {
+func processChunk(chunk []byte, bits []uint64) {
 	lines := bytes.Count(chunk, []byte{'\n'})
 	fmt.Printf("Got %d lines (%d bytes)\n", lines, len(chunk))
 	//fmt.Println(string(chunk))
@@ -78,17 +91,65 @@ func processChunk(chunk []byte) {
 	ipAddresses := strings.Fields(string(chunk))
 
 	for _, ipAddress := range ipAddresses {
-		numbers := strings.Split(ipAddress, ".")
+		ip := net.ParseIP(ipAddress)
 
-		firstNumber, _ := strconv.Atoi(numbers[0])
-		secondNumber, _ := strconv.Atoi(numbers[1])
-		thirdNumber, _ := strconv.Atoi(numbers[2])
-		fourthNumber, _ := strconv.Atoi(numbers[3])
+		if ip == nil {
+			log.Println("Invalid IP address: ", ipAddress)
 
-		a := 1<<24*firstNumber + 1<<16*secondNumber + 1<<8*thirdNumber + fourthNumber
-		fmt.Println(ipAddress, a)
+			continue
+		}
+
+		// same result as (1<<24)*firstNumber + (1<<16)*secondNumber + (1<<8)*thirdNumber + fourthNumber
+		// 0 ... 2^32-1
+		bit := binary.BigEndian.Uint32(ip.To4())
+
+		fmt.Println(ip.To4(), bit)
+
+		SetBit(bits, bit)
+	}
+}
+
+func indexToIP(i uint32) net.IP {
+	// make a 4-byte buffer
+	buf := make([]byte, 4)
+	// write i into buf in big-endian order
+	binary.BigEndian.PutUint32(buf, i)
+	// buf is now [b0 b1 b2 b3], so this is a valid IPv4
+	return buf
+}
+
+func GetSetBits(arr []uint64) []uint32 {
+	// 1) First count total bits so we can pre-alloc result slice
+	var total int
+	for _, w := range arr {
+		total += bits.OnesCount64(w)
 	}
 
-	// You can convert to string: text := string(chunk)
-	// and work with each line if you like.
+	log.Println(total)
+	res := make([]uint32, 0, total)
+
+	// 2) Scan each word
+	for wordIdx, w := range arr {
+		base := uint32(wordIdx) * 64
+		for w != 0 {
+			// find lowest set bit
+			tz := bits.TrailingZeros64(w)
+			// record its absolute index
+			res = append(res, base+uint32(tz))
+			// clear that bit
+			w &^= 1 << tz
+		}
+	}
+	return res
+}
+
+// CountSetBits returns how many bits are 1 in arr.
+func CountSetBits(arr []uint64) int {
+	total := 0
+
+	for _, w := range arr {
+		total += bits.OnesCount64(w)
+	}
+
+	return total
 }

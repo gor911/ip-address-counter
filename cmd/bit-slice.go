@@ -1,6 +1,8 @@
 package cmd
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // totalBits is 2^32 bits
 const totalBits = 1 << 32
@@ -38,9 +40,9 @@ func RunBitSlice() {
 
 // SetBit turns on bit i (0 ≤ i < 2^32)
 func SetBit(arr []uint64, i uint32) {
-	idx := i >> 6             // divide by 64
-	pos := i & (wordBits - 1) // mod 64
-	arr[idx] |= 1 << pos
+	idx := i >> 6             // which uint64 word holds bit i, same as i/64
+	pos := i & (wordBits - 1) // which bit inside that word, same as i%64
+	arr[idx] |= 1 << pos      // use OR to turn on exactly that bit
 }
 
 // ClearBit turns off bit i
