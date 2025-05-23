@@ -4,13 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"io"
 	"log"
 	"math/bits"
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 func Run3() {
@@ -25,6 +25,9 @@ func Run3() {
 			log.Fatal(err)
 		}
 	}(f)
+
+	mutex := sync.Mutex{}
+	wg := sync.WaitGroup{}
 
 	const chunkSize = 40 // e.g. 4 KB per chunk
 	var leftover []byte  // carry any partial line
@@ -48,7 +51,8 @@ func Run3() {
 			} else {
 				// full-chunk is data up to and including that newline
 				full := data[:cut+1]
-				processChunk(full, bitsArr)
+				wg.Add(1)
+				go processChunk(full, bitsArr, &mutex, &wg)
 
 				// leftover is any bytes after that newline
 				leftover = data[cut+1:]
@@ -57,10 +61,11 @@ func Run3() {
 
 		if err != nil {
 			if err == io.EOF {
-				spew.Dump(len(leftover))
+				fmt.Println(len(leftover))
 				// If the file does not end with a newline.
 				if len(leftover) > 0 {
-					processChunk(leftover, bitsArr)
+					wg.Add(1)
+					processChunk(leftover, bitsArr, &mutex, &wg)
 				}
 
 				break
@@ -76,14 +81,15 @@ func Run3() {
 	//	}
 	//}
 
+	wg.Wait()
+
 	cnt := CountSetBits(bitsArr)
 	fmt.Println(cnt)
-
 }
 
 // processChunk handles a chunk of complete lines.
 // Here we just print how many lines and bytes we got.
-func processChunk(chunk []byte, bits []uint64) {
+func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
 	lines := bytes.Count(chunk, []byte{'\n'})
 	fmt.Printf("Got %d lines (%d bytes)\n", lines, len(chunk))
 	//fmt.Println(string(chunk))
@@ -104,9 +110,10 @@ func processChunk(chunk []byte, bits []uint64) {
 		bit := binary.BigEndian.Uint32(ip.To4())
 
 		fmt.Println(ip.To4(), bit)
-
-		SetBit(bits, bit)
+		SetBit(bits, bit, mutex)
 	}
+
+	wg.Done()
 }
 
 func indexToIP(i uint32) net.IP {
