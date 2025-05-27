@@ -9,12 +9,13 @@ import (
 	"math/bits"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 )
 
 func Run3() {
-	f, err := os.Open("resources/ip-addresses.txt")
+	f, err := os.Open("resources/ip_addresses")
 
 	if err != nil {
 		log.Fatal(err)
@@ -41,6 +42,8 @@ func Run3() {
 		if n > 0 {
 			// 1) combine leftover from last read with new bytes
 			data := append(leftover, buf[:n]...)
+
+			PrintMemUsage()
 
 			// 2) find the last newline in data
 			cut := bytes.LastIndexByte(data, '\n')
@@ -76,12 +79,6 @@ func Run3() {
 		}
 	}
 
-	//for i := 0; i < totalBits; i++ {
-	//	if TestBit(bits, uint32(i)) {
-	//		log.Println("Bit", i, "is ON", indexToIP(uint32(i)))
-	//	}
-	//}
-
 	wg.Wait()
 
 	cnt := CountSetBits(bitsArr)
@@ -91,8 +88,7 @@ func Run3() {
 // processChunk handles a chunk of complete lines.
 // Here we just print how many lines and bytes we got.
 func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
-	lines := bytes.Count(chunk, []byte{'\n'})
-	fmt.Printf("Got %d lines (%d bytes)\n", lines, len(chunk))
+	defer wg.Done()
 
 	ipAddresses := strings.Fields(string(chunk))
 
@@ -111,42 +107,6 @@ func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitG
 
 		SetBit(bits, bit, mutex)
 	}
-
-	wg.Done()
-}
-
-func indexToIP(i uint32) net.IP {
-	// make a 4-byte buffer
-	buf := make([]byte, 4)
-	// write i into buf in big-endian order
-	binary.BigEndian.PutUint32(buf, i)
-	// buf is now [b0 b1 b2 b3], so this is a valid IPv4
-	return buf
-}
-
-func GetSetBits(arr []uint64) []uint32 {
-	// 1) First count total bits so we can pre-alloc result slice
-	var total int
-	for _, w := range arr {
-		total += bits.OnesCount64(w)
-	}
-
-	log.Println(total)
-	res := make([]uint32, 0, total)
-
-	// 2) Scan each word
-	for wordIdx, w := range arr {
-		base := uint32(wordIdx) * 64
-		for w != 0 {
-			// find lowest set bit
-			tz := bits.TrailingZeros64(w)
-			// record its absolute index
-			res = append(res, base+uint32(tz))
-			// clear that bit
-			w &^= 1 << tz
-		}
-	}
-	return res
 }
 
 // CountSetBits returns how many bits are 1 in arr.
@@ -158,4 +118,25 @@ func CountSetBits(arr []uint64) int {
 	}
 
 	return total
+}
+
+var peakAlloc uint64
+
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	//fmt.Printf("Alloc = %v MiB", m.Alloc/1024/1024)
+	//fmt.Printf("\tTotalAlloc = %v MiB", m.TotalAlloc/1024/1024)
+	//fmt.Printf("\tSys = %v MiB", m.Sys/1024/1024)
+	//fmt.Printf("\tNumGC = %v\n", m.NumGC)
+
+	// update peakAlloc if current Alloc is higher
+	if m.Alloc > peakAlloc {
+		peakAlloc = m.Alloc
+	}
+
+	fmt.Printf("Alloc = %v MiB\tPeakAlloc = %v MiB\n",
+		m.Alloc/1024/1024,
+		peakAlloc/1024/1024,
+	)
 }

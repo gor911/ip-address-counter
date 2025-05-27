@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"ip-address/cmd"
+	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"runtime"
 	"time"
 )
@@ -10,6 +13,10 @@ import (
 func main() {
 	defer timer("main")() // <-- The trailing () is the deferred call
 	defer PrintMemUsage()
+
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	cmd.Run3()
 
