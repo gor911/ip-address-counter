@@ -18,7 +18,7 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	cmd.Run3()
+	cmd.Run2()
 
 	//cmd.RunBitSlice()
 	//cmd.RunBigInt()
