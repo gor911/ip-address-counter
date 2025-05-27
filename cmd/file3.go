@@ -40,27 +40,18 @@ func Run3() {
 		n, err := f.Read(buf)
 
 		if n > 0 {
-			// 1) combine leftover from last read with new bytes
 			data := append(leftover, buf[:n]...)
 
-			PrintMemUsage()
+			//fmt.Println(len(data))
+			lines := bytes.Split(data, []byte("\n"))
 
-			// 2) find the last newline in data
-			cut := bytes.LastIndexByte(data, '\n')
+			//fmt.Println(len(lines))
 
-			if cut == -1 {
-				// no newline found: buffer too small for one line?
-				// keep all data as leftover and read more
-				leftover = data
-			} else {
-				// full-chunk is data up to and including that newline
-				full := data[:cut+1]
-				wg.Add(1)
-				processChunk(full, bitsArr, &mutex, &wg)
+			wg.Add(1)
+			processLine(lines, bitsArr, &mutex, &wg)
 
-				// leftover is any bytes after that newline
-				leftover = data[cut+1:]
-			}
+			// Save last part as leftover
+			leftover = lines[len(lines)-1]
 		}
 
 		if err != nil {
@@ -97,6 +88,26 @@ func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitG
 
 		if ip == nil {
 			log.Println("Invalid IP address: ", ipAddress)
+
+			continue
+		}
+
+		// same result as (1<<24)*firstNumber + (1<<16)*secondNumber + (1<<8)*thirdNumber + fourthNumber
+		// 0 ... 2^32-1
+		bit := binary.BigEndian.Uint32(ip.To4())
+
+		SetBit(bits, bit, mutex)
+	}
+}
+
+func processLine(ipAddresses [][]byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for i := 0; i < len(ipAddresses)-1; i++ {
+		ip := net.ParseIP(string(ipAddresses[i]))
+
+		if ip == nil {
+			log.Println("Invalid IP address: ", string(ipAddresses[i]))
 
 			continue
 		}
