@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"unsafe"
 )
 
 func Run3() {
@@ -32,36 +33,74 @@ func Run3() {
 
 	const chunkSize = 100 * 1024 * 1024 // 100 MiB
 
-	var leftover []byte // carry any partial line
+	//var leftover []byte // carry any partial line
+	leftover := make([]byte, 0, chunkSize+32)
+
 	buf := make([]byte, chunkSize)
+	//data := make([]byte, chunkSize*2)
+	//fmt.Println(cap(data))
 	bitsArr := make([]uint64, wordsNeeded)
+	//fmt.Println(cap(data))
+	//fmt.Println(len(data))
 
 	for {
 		n, err := f.Read(buf)
 
 		if n > 0 {
-			data := append(leftover, buf[:n]...)
+			//PrintMemUsage()
+			//data = append(data, buf[:n]...)
+			//data = buf[:n]
+			//fmt.Println(cap(data))
+
+			//data = data[:0]
+			//fmt.Println(cap(data))
 
 			//fmt.Println(len(data))
-			lines := bytes.Split(data, []byte("\n"))
 
+			// 2) Append into the same slice, reusing capacity
+			leftover = append(leftover, buf[:n]...)
+			//fmt.Println(uintptr(unsafe.Pointer(&leftover[0])))
+			//
+			//fmt.Println(&leftover[0])
+			//fmt.Println(cap(leftover))
+			//PrintMemUsage()
+
+			if cut := bytes.LastIndexByte(leftover, '\n'); cut >= 0 {
+				//wg.Add(1)
+				//processChunk(leftover[:cut], bitsArr, &mutex, &wg)
+
+				//processLine(leftover[:cut], bitsArr, &mutex, &wg)
+				processChunk2(leftover[:cut], bitsArr, &mutex, &wg)
+
+				copy(leftover, leftover[cut+1:])
+				leftover = leftover[:len(leftover)-cut-1]
+				//fmt.Println(cap(leftover))
+
+				//fmt.Println(len(leftover))
+			}
+
+			PrintMemUsage()
+
+			//lines := bytes.Split(buf[:n], []byte("\n"))
+			//
 			//fmt.Println(len(lines))
 
-			wg.Add(1)
-			processLine(lines, bitsArr, &mutex, &wg)
+			//wg.Add(1)
+			//processLine(lines, bitsArr, &mutex, &wg)
 
 			// Save last part as leftover
-			leftover = lines[len(lines)-1]
+			//leftover = lines[len(lines)-1]
 		}
 
 		if err != nil {
 			if err == io.EOF {
+				fmt.Println("leftover")
 				fmt.Println("leftover", len(leftover))
-				// If the file does not end with a newline.
-				if len(leftover) > 0 {
-					wg.Add(1)
-					processChunk(leftover, bitsArr, &mutex, &wg)
-				}
+				//// If the file does not end with a newline.
+				//if len(leftover) > 0 {
+				//	wg.Add(1)
+				//	processChunk(leftover, bitsArr, &mutex, &wg)
+				//}
 
 				break
 			}
@@ -70,7 +109,7 @@ func Run3() {
 		}
 	}
 
-	wg.Wait()
+	//wg.Wait()
 
 	cnt := CountSetBits(bitsArr)
 	fmt.Println(cnt)
@@ -79,7 +118,7 @@ func Run3() {
 // processChunk handles a chunk of complete lines.
 // Here we just print how many lines and bytes we got.
 func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
-	defer wg.Done()
+	//defer wg.Done()
 
 	ipAddresses := strings.Fields(string(chunk))
 
@@ -100,23 +139,76 @@ func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitG
 	}
 }
 
-func processLine(ipAddresses [][]byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
-	defer wg.Done()
+func processLine(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
+	//defer wg.Done()
 
-	for i := 0; i < len(ipAddresses)-1; i++ {
-		ip := net.ParseIP(string(ipAddresses[i]))
+	ipAddresses := bytes.Split(chunk, []byte("\n"))
+
+	for _, ipAddress := range ipAddresses {
+		ip := net.ParseIP(string(ipAddress))
 
 		if ip == nil {
-			log.Println("Invalid IP address: ", string(ipAddresses[i]))
+			log.Println("Invalid IP address: ", string(ipAddress))
 
 			continue
 		}
 
 		// same result as (1<<24)*firstNumber + (1<<16)*secondNumber + (1<<8)*thirdNumber + fourthNumber
 		// 0 ... 2^32-1
-		bit := binary.BigEndian.Uint32(ip.To4())
+		processIP(ip.To4(), bits, mutex)
+	}
+}
 
-		SetBit(bits, bit, mutex)
+func processIP(ip []byte, bits []uint64, mutex *sync.Mutex) {
+	bit := binary.BigEndian.Uint32(ip)
+
+	SetBit(bits, bit, mutex)
+}
+
+func processChunk2(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
+	var start = 0 // loop over every byte in chunk
+
+	for i := 0; i < len(chunk); i++ {
+		if chunk[i] == '\n' {
+			// slice header only, no new backing array
+			ipAddress := chunk[start:i:i]
+
+			//idx, err := parseIPv4(ipAddress)
+			//if err == nil {
+			//	SetBit(bits, idx, mutex)
+			//}
+
+			ipAddressStr := *(*string)(unsafe.Pointer(&ipAddress))
+			ip := net.ParseIP(ipAddressStr) // still allocates the IP slice
+			//PrintMemUsage()
+
+			//ip := net.ParseIP(string(ipAddress))
+			//
+			if ip == nil {
+				log.Println("Invalid IP address: ", string(ipAddress))
+
+				continue
+			}
+
+			processIP(ip.To4(), bits, mutex)
+
+			start = i + 1 // move past the '\n'
+		}
+	}
+
+	// any final line without a trailing '\n'
+	if start < len(chunk) {
+		//ipAddress := chunk[start:]
+		//
+		//ip := net.ParseIP(string(ipAddress))
+		//
+		//if ip == nil {
+		//	log.Println("Invalid IP address: ", string(ipAddress))
+		//
+		//	return
+		//}
+		//
+		//processIP(ip.To4(), bits, mutex) // your IP‐handling function
 	}
 }
 
@@ -150,4 +242,31 @@ func PrintMemUsage() {
 		m.Alloc/1024/1024,
 		peakAlloc/1024/1024,
 	)
+}
+func parseIPv4(line []byte) (uint32, error) {
+	var ip, octet uint32
+	dots := 0
+	for _, c := range line {
+		switch {
+		case c >= '0' && c <= '9':
+			octet = octet*10 + uint32(c-'0')
+			if octet > 255 {
+				return 0, fmt.Errorf("octet >255")
+			}
+		case c == '.':
+			ip = (ip << 8) | octet
+			octet = 0
+			dots++
+			if dots > 3 {
+				return 0, fmt.Errorf("too many dots")
+			}
+		default:
+			return 0, fmt.Errorf("invalid char %q", c)
+		}
+	}
+	if dots != 3 {
+		return 0, fmt.Errorf("wrong dot count")
+	}
+	ip = (ip << 8) | octet
+	return ip, nil
 }
