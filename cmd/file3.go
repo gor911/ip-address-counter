@@ -29,9 +29,7 @@ func Run() {
 
 	const chunkSize = 100 * 1024 * 1024 // 100 MiB
 
-	//var fullData []byte // carry any partial line
 	fullData := make([]byte, 0, chunkSize+16)
-
 	buf := make([]byte, chunkSize)
 	bitsArr := make([]uint64, wordsNeeded)
 
@@ -39,7 +37,6 @@ func Run() {
 		n, err := f.Read(buf)
 
 		if n > 0 {
-			// 2) Append into the same slice, reusing capacity
 			fullData = append(fullData, buf[:n]...)
 
 			if cut := bytes.LastIndexByte(fullData, '\n'); cut >= 0 {
