@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"fmt"
 	"sync"
-	"time"
 )
 
 // totalBits is 2^32 bits
@@ -14,38 +12,6 @@ const wordBits = 64
 
 // wordsNeeded = totalBits/wordBits = 1<<(32-6) = 1<<26
 const wordsNeeded = totalBits / wordBits
-
-func RunBitSlice() {
-	// Allocate the slice. Under the hood this uses exactly 512 MiB.
-	bits := make([]uint64, wordsNeeded)
-	mutex := sync.Mutex{}
-	//bits := new([wordsNeeded]uint64)
-
-	// Example index (must be < 2^32)
-
-	for i := 0; i < 10000; i++ {
-		go func(mutex *sync.Mutex) {
-			//mutex.Lock()
-			SetBit(bits, uint32(i), mutex)
-			//mutex.Unlock()
-		}(&mutex)
-	}
-
-	var ii uint32 = 123456789
-
-	// Test bit i
-	if TestBit(bits, ii) {
-		fmt.Println("Bit", ii, "is ON")
-	} else {
-		fmt.Println("Bit", ii, "is OFF")
-	}
-
-	// Clear bit i
-	ClearBit(bits, ii)
-	fmt.Println("After clear:", TestBit(bits, ii)) // should be false
-
-	time.Sleep(5 * time.Second)
-}
 
 // SetBit turns on bit i (0 ≤ i < 2^32)
 func SetBit(arr []uint64, i uint32, mutex *sync.Mutex) {
