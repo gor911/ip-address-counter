@@ -8,7 +8,13 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
-	"sync"
+)
+
+const (
+	totalBits   = 1 << 32 // 2^32 bits
+	wordBits    = 64      // pack 64 bits per uint64 word
+	wordsNeeded = totalBits / wordBits
+	chunkSize   = 10 * 1024 * 1024 // 10 MiB
 )
 
 func Run() {
@@ -24,11 +30,7 @@ func Run() {
 		}
 	}(f)
 
-	mutex := sync.Mutex{}
-	wg := sync.WaitGroup{}
-
-	const chunkSize = 100 * 1024 * 1024 // 100 MiB
-
+	var memStats runtime.MemStats
 	fullData := make([]byte, 0, chunkSize+16)
 	buf := make([]byte, chunkSize)
 	bitsArr := make([]uint64, wordsNeeded)
@@ -40,7 +42,8 @@ func Run() {
 			fullData = append(fullData, buf[:n]...)
 
 			if cut := bytes.LastIndexByte(fullData, '\n'); cut >= 0 {
-				processChunk(fullData[:cut], bitsArr, &mutex, &wg)
+				processChunk(fullData[:cut], bitsArr)
+				calcPeakAlloc(&memStats)
 
 				copy(fullData, fullData[cut+1:])
 				fullData = fullData[:len(fullData)-cut-1]
@@ -49,12 +52,9 @@ func Run() {
 
 		if err != nil {
 			if err == io.EOF {
-				fmt.Println("fullData", len(fullData))
 				// If the file does not end with a newline.
 				if len(fullData) > 0 {
-					fmt.Println("fullData", string(fullData))
-					//wg.Add(1)
-					processChunk(fullData, bitsArr, &mutex, &wg)
+					processChunk(fullData, bitsArr)
 				}
 
 				break
@@ -64,13 +64,11 @@ func Run() {
 		}
 	}
 
-	//wg.Wait()
-
-	cnt := CountSetBits(bitsArr)
-	fmt.Println(cnt)
+	count := CountSetBits(bitsArr)
+	fmt.Println("Total unique IPs:", count)
 }
 
-func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitGroup) {
+func processChunk(chunk []byte, bits []uint64) {
 	var start = 0 // loop over every byte in chunk
 
 	for i := 0; i < len(chunk); i++ {
@@ -78,7 +76,7 @@ func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitG
 			// slice header only, no new backing array
 			ipAddress := chunk[start:i:i]
 
-			parseIPAndSet(ipAddress, bits, mutex)
+			parseIPAndSet(ipAddress, bits)
 
 			start = i + 1 // move past the '\n'
 		}
@@ -88,11 +86,11 @@ func processChunk(chunk []byte, bits []uint64, mutex *sync.Mutex, wg *sync.WaitG
 	if start < len(chunk) {
 		ipAddress := chunk[start:]
 
-		parseIPAndSet(ipAddress, bits, mutex)
+		parseIPAndSet(ipAddress, bits)
 	}
 }
 
-func parseIPAndSet(ipAddress []byte, bits []uint64, mutex *sync.Mutex) {
+func parseIPAndSet(ipAddress []byte, bits []uint64) {
 	idx, err := parseIPv4(ipAddress)
 
 	if err != nil {
@@ -101,7 +99,7 @@ func parseIPAndSet(ipAddress []byte, bits []uint64, mutex *sync.Mutex) {
 		return
 	}
 
-	SetBit(bits, idx, mutex)
+	SetBit(bits, idx)
 }
 
 // CountSetBits returns how many bits are 1 in arr.
@@ -115,22 +113,24 @@ func CountSetBits(arr []uint64) int {
 	return total
 }
 
+// SetBit turns on bit i (0 ≤ i < 2^32)
+func SetBit(arr []uint64, i uint32) {
+	idx := i >> 6             // which uint64 word holds bit i, same as i/64
+	pos := i & (wordBits - 1) // which bit inside that word, same as i%64
+	arr[idx] |= 1 << pos      // use OR to turn on exactly that bit
+}
+
 var peakAlloc uint64
 
-func PrintMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
+func calcPeakAlloc(m *runtime.MemStats) {
+	runtime.ReadMemStats(m)
 
 	// update peakAlloc if current Alloc is higher
 	if m.Alloc > peakAlloc {
 		peakAlloc = m.Alloc
 	}
-
-	fmt.Printf("Alloc = %v MiB\tPeakAlloc = %v MiB\n",
-		m.Alloc/1024/1024,
-		peakAlloc/1024/1024,
-	)
 }
+
 func parseIPv4(line []byte) (uint32, error) {
 	var ip, octet uint32
 	dots := 0
