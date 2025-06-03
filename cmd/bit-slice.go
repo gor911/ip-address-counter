@@ -17,9 +17,9 @@ const wordsNeeded = totalBits / wordBits
 func SetBit(arr []uint64, i uint32, mutex *sync.Mutex) {
 	idx := i >> 6             // which uint64 word holds bit i, same as i/64
 	pos := i & (wordBits - 1) // which bit inside that word, same as i%64
-	//mutex.Lock()
+	mutex.Lock()
 	arr[idx] |= 1 << pos // use OR to turn on exactly that bit
-	//mutex.Unlock()
+	mutex.Unlock()
 }
 
 // ClearBit turns off bit i

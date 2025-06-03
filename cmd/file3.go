@@ -97,6 +97,8 @@ func parseIPAndSet(ipAddress []byte, bits []uint64, mutex *sync.Mutex) {
 
 	if err != nil {
 		log.Println("Invalid IP address: ", string(ipAddress))
+
+		return
 	}
 
 	SetBit(bits, idx, mutex)
