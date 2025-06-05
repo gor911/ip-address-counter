@@ -8,6 +8,8 @@ import (
 	"math/bits"
 	"os"
 	"runtime"
+	"sync"
+	"sync/atomic"
 )
 
 var peakAlloc uint64
@@ -46,6 +48,24 @@ func Run() {
 	// Allocate the 2^32‐bit bitset = (2^32 / 64) = 1<<26 uint64 words = 512 MiB.
 	bitsArr := make([]uint64, wordsNeeded)
 
+	jobs := make(chan []byte, 5)
+
+	var wg sync.WaitGroup
+
+	workers := 5
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for job := range jobs {
+				processChunk(job, bitsArr)
+			}
+		}()
+	}
+
 	for {
 		// Compute how many bytes are currently in fullData
 		leftoverLen := len(fullData)
@@ -62,8 +82,12 @@ func Run() {
 			// Find the last '\n' in fullData. Everything up to that newline is (complete) lines.
 			if cut := bytes.LastIndexByte(fullData, '\n'); cut >= 0 {
 				// Process the chunk of whole lines (no trailing newline, so lines aren’t split).
-				processChunk(fullData[:cut], bitsArr)
+				fullData2 := make([]byte, len(fullData[:cut]))
+				copy(fullData2, fullData[:cut])
+
+				jobs <- fullData2
 				calcPeakAlloc(&memStats)
+				//fmt.Printf("Peak memory = %d MiB\n", peakAlloc/1024/1024)
 
 				// Move any partial line (≤ 15 bytes) back to front
 				rem := len(fullData) - (cut + 1)        // ≤ 15
@@ -85,6 +109,10 @@ func Run() {
 			log.Fatal(err)
 		}
 	}
+
+	close(jobs)
+
+	wg.Wait()
 
 	calcPeakAlloc(&memStats)
 	fmt.Printf("Peak memory = %d MiB\n", peakAlloc/1024/1024)
@@ -113,18 +141,42 @@ func processChunk(chunk []byte, bitsArr []uint64) {
 	}
 }
 
+// SetBitAtomic sets bit i in bitsArr without a mutex, via CAS.
+// It loops until it successfully sets that one bit. If the bit was already 1, it returns immediately.
+func SetBitAtomic(bitsArr []uint64, i uint32) {
+	wordIdx := i >> 6            // i/64
+	bitPos := i & (wordBits - 1) // i%64
+	mask := uint64(1) << bitPos
+
+	ptr := &bitsArr[wordIdx]
+
+	for {
+		oldVal := atomic.LoadUint64(ptr)
+		// if the bit is already set, we’re done
+		if oldVal&mask != 0 {
+			return
+		}
+
+		newVal := oldVal | mask
+		// try to swap oldVal → newVal
+		if atomic.CompareAndSwapUint64(ptr, oldVal, newVal) {
+			return
+		}
+		// CAS failed (someone else changed it). Loop and try again.
+	}
+}
+
 // parseIPAndSet turns "a.b.c.d" (as bytes) into a uint32 and sets that bit.
 func parseIPAndSet(ipBytes []byte, bitsArr []uint64) {
 	idx, err := parseIPv4(ipBytes)
 	if err != nil {
+		log.Println(err)
 		// If invalid, you can log or ignore. Converting to string(ipBytes) would allocate,
 		// so we just skip printing the offending line.
 		return
 	}
-	// Set bit idx in the 2^32-bit array:
-	wordIdx := idx >> 6            // idx / 64
-	bitPos := idx & (wordBits - 1) // idx % 64
-	bitsArr[wordIdx] |= 1 << bitPos
+
+	SetBitAtomic(bitsArr, idx)
 }
 
 // CountSetBits returns how many bits are 1 in arr.
@@ -148,7 +200,7 @@ func parseIPv4(line []byte) (uint32, error) {
 		case c >= '0' && c <= '9':
 			octet = octet*10 + uint32(c-'0')
 			if octet > 255 {
-				return 0, fmt.Errorf("octet > 255")
+				return 0, fmt.Errorf("octet > 255 in %q", line)
 			}
 		case c == '.':
 			ip = (ip << 8) | octet
