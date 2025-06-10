@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
 	"runtime"
 	"time"
 )
@@ -18,7 +19,7 @@ func main() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
 	}()
 
-	cmd.Run()
+	cmd.Run(os.Args[1])
 }
 
 func PrintMemUsage() {

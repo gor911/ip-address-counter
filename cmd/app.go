@@ -31,8 +31,8 @@ const (
 	chunkSize   = 10 * 1024 * 1024 // 10 MiB
 )
 
-func Run() {
-	f, err := os.Open("resources/ip_addresses")
+func Run(path string) {
+	f, err := os.Open(path)
 
 	if err != nil {
 		log.Fatal(err)
