@@ -70,7 +70,7 @@ func Run() {
 		// Compute how many bytes are currently in fullData
 		leftoverLen := len(fullData)
 
-		// Read exactly chunkSize bytes into fullData[leftoverLen : leftoverLen+chunkSize]
+		// Read exactly chunkSize bytes into buffer
 		// (guaranteed not to exceed cap because leftoverLen ≤ 15)
 		readBuf := fullData[leftoverLen : leftoverLen+chunkSize]
 		n, err := f.Read(readBuf)
@@ -114,10 +114,6 @@ func Run() {
 
 	wg.Wait()
 
-	calcPeakAlloc(&memStats)
-	fmt.Printf("Peak memory = %d MiB\n", peakAlloc/1024/1024)
-
-	//Count all set bits in bitsArr:
 	count := CountSetBits(bitsArr)
 	fmt.Println("Total unique IPs:", count)
 }
@@ -172,11 +168,9 @@ func SetBitAtomic(bitsArr []uint64, i uint32) {
 // parseIPAndSet turns "a.b.c.d" (as bytes) into a uint32 and sets that bit.
 func parseIPAndSet(ipBytes []byte, bitsArr []uint64) {
 	idx, err := parseIPv4(ipBytes)
+
 	if err != nil {
-		log.Println(err)
-		// If invalid, you can log or ignore. Converting to string(ipBytes) would allocate,
-		// so we just skip printing the offending line.
-		return
+		log.Fatal(err)
 	}
 
 	SetBitAtomic(bitsArr, idx)
