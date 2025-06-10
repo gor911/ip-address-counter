@@ -52,11 +52,11 @@ func Run() {
 
 	var wg sync.WaitGroup
 
-	workers := 5
+	workersCount := runtime.NumCPU()
 
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
+	wg.Add(workersCount)
 
+	for i := 0; i < workersCount; i++ {
 		go func() {
 			defer wg.Done()
 
@@ -82,10 +82,10 @@ func Run() {
 			// Find the last '\n' in fullData. Everything up to that newline is (complete) lines.
 			if cut := bytes.LastIndexByte(fullData, '\n'); cut >= 0 {
 				// Process the chunk of whole lines (no trailing newline, so lines aren’t split).
-				fullData2 := make([]byte, len(fullData[:cut]))
-				copy(fullData2, fullData[:cut])
+				fullDataCopy := make([]byte, len(fullData[:cut]))
+				copy(fullDataCopy, fullData[:cut])
 
-				jobs <- fullData2
+				jobs <- fullDataCopy
 				calcPeakAlloc(&memStats)
 				//fmt.Printf("Peak memory = %d MiB\n", peakAlloc/1024/1024)
 
@@ -125,18 +125,21 @@ func Run() {
 // processChunk parses every line in chunk (each line is "a.b.c.d") and sets its bit.
 func processChunk(chunk []byte, bitsArr []uint64) {
 	start := 0
+
 	for i := 0; i < len(chunk); i++ {
 		if chunk[i] == '\n' {
 			// slice header only, no new backing array:
 			line := chunk[start:i:i] // len = i-start, cap = i-start
 
 			parseIPAndSet(line, bitsArr)
+
 			start = i + 1
 		}
 	}
 	// If the final line has no trailing '\n', handle it:
 	if start < len(chunk) {
 		line := chunk[start:]
+
 		parseIPAndSet(line, bitsArr)
 	}
 }
@@ -199,6 +202,7 @@ func parseIPv4(line []byte) (uint32, error) {
 		switch {
 		case c >= '0' && c <= '9':
 			octet = octet*10 + uint32(c-'0')
+
 			if octet > 255 {
 				return 0, fmt.Errorf("octet > 255 in %q", line)
 			}
@@ -206,6 +210,7 @@ func parseIPv4(line []byte) (uint32, error) {
 			ip = (ip << 8) | octet
 			octet = 0
 			dots++
+
 			if dots > 3 {
 				return 0, fmt.Errorf("too many dots in %q", line)
 			}
@@ -213,9 +218,12 @@ func parseIPv4(line []byte) (uint32, error) {
 			return 0, fmt.Errorf("invalid char %q in %q", c, line)
 		}
 	}
+
 	if dots != 3 {
 		return 0, fmt.Errorf("wrong dot count in %q", line)
 	}
+
 	ip = (ip << 8) | octet
+
 	return ip, nil
 }
